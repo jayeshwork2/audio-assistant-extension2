@@ -102,7 +102,7 @@ export const API_BASE_URL = "https://localhost:7020";
 
 // Transcription API constants
 export const API_ENDPOINTS = {
-  TRANSCRIBE: "/api/transcribe",
+  TRANSCRIBE: "/api/transcription",
 };
 
 export const TRANSCRIPTION_CONFIG = {
