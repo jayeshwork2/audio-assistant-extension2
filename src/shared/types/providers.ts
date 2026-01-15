@@ -1,4 +1,5 @@
 export enum STTProviderType {
+  BROWSER = 'browser',
   GROQ = 'groq',
   WHISPER_CPP = 'whisper_cpp',
   OPENAI = 'openai',

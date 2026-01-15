@@ -13,7 +13,7 @@ export interface UserSettings {
 export const DEFAULT_SETTINGS: UserSettings = {
   audioMode: 'mic-only',
   language: 'en-US',
-  sttProvider: STTProviderType.GROQ,
+  sttProvider: STTProviderType.BROWSER,
   aiProvider: AIProviderType.CLAUDE,
   apiKeys: {},
   autoSave: true,
