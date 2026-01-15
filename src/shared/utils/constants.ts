@@ -57,6 +57,12 @@ export const SUPPORTED_LANGUAGES = [
 
 export const STT_PROVIDERS = [
   {
+    id: STTProviderType.BROWSER,
+    name: "Browser (Default)",
+    description: "Built-in Speech API",
+    isFree: true,
+  },
+  {
     id: STTProviderType.GROQ,
     name: "Groq",
     description: "Fast & Free",

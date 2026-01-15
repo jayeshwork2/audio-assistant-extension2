@@ -3,20 +3,24 @@ import { TranscriptionResult } from '../../shared/types/transcription';
 
 interface Props {
   transcript: string;
+  interimTranscript?: string;
   isRecording: boolean;
   isTranscribing?: boolean;
   transcriptionResult?: TranscriptionResult | null;
   error?: string | null;
   onClearError?: () => void;
+  transcriptionMethod?: string;
 }
 
 export const TranscriptDisplay: React.FC<Props> = ({
   transcript,
+  interimTranscript = '',
   isRecording,
   isTranscribing = false,
   transcriptionResult = null,
   error = null,
   onClearError,
+  transcriptionMethod,
 }) => {
   const formatProcessingTime = (ms: number): string => {
     if (ms < 1000) return `${ms}ms`;
@@ -31,11 +35,21 @@ export const TranscriptDisplay: React.FC<Props> = ({
     return 'No transcript yet';
   };
 
+  const provider = transcriptionMethod || transcriptionResult?.provider || '';
+  const confidence = transcriptionResult?.confidence || 0;
+
   return (
     <div className="transcript-display">
       <div className="transcript-header">
         <h4>Transcript</h4>
-        <span className="transcript-status">{getStatusMessage()}</span>
+        <div className="header-meta">
+          {provider && (
+            <span className={`method-badge ${provider.toLowerCase()}`}>
+              {provider.includes('browser') ? '🌐 Browser STT' : '⚡ Groq STT'}
+            </span>
+          )}
+          <span className="transcript-status">{getStatusMessage()}</span>
+        </div>
       </div>
 
       {error && (
@@ -82,7 +96,11 @@ export const TranscriptDisplay: React.FC<Props> = ({
       )}
 
       <div className="transcript-content">
-        {transcript || (isRecording ? 'Listening...' : 'No transcript yet.')}
+        {transcript}
+        {interimTranscript && (
+          <span className="interim-text"> {interimTranscript}</span>
+        )}
+        {!transcript && !interimTranscript && (isRecording ? 'Listening...' : 'No transcript yet.')}
       </div>
 
       {transcript && !isTranscribing && (

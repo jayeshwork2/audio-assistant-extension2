@@ -1,56 +1,91 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { TranscriptionResult } from '../../shared/types/transcription';
 import { STTProviderType } from '../../shared/types/providers';
 import { transcriptionClient } from '../../shared/services/transcription-client';
 import { transcriptHistoryService } from '../../shared/services/transcript-history-service';
 import { logger } from '../../shared/utils/logger';
+import { useBrowserTranscription } from './useBrowserTranscription';
 
 export const useTranscription = () => {
+  const {
+    transcript: browserTranscript,
+    interimTranscript,
+    isListening: isBrowserListening,
+    error: browserError,
+    confidence: browserConfidence,
+    isSupported: isBrowserSupported,
+    startListening,
+    stopListening,
+    resetTranscript
+  } = useBrowserTranscription();
+
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [currentTranscript, setCurrentTranscript] = useState('');
   const [lastResult, setLastResult] = useState<TranscriptionResult | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [providerUsed, setProviderUsed] = useState('');
+  const [transcriptionMethod, setTranscriptionMethod] = useState<'browser' | 'groq' | ''>('');
+  const [isFallbackUsed, setIsFallbackUsed] = useState(false);
+  const [confidence, setConfidence] = useState(0);
 
   const startTranscription = async (
     audioData: Blob,
     language: string,
-    sttProvider: STTProviderType,
-    audioDuration?: number
+    sttProvider?: STTProviderType,
+    audioDuration?: number,
+    existingBrowserTranscript?: string
   ): Promise<void> => {
     setIsTranscribing(true);
     setError(null);
-    setCurrentTranscript('');
-    setProviderUsed('');
-
+    setIsFallbackUsed(false);
+    
     try {
-      logger.info('Starting transcription', { language, sttProvider, audioSize: audioData.size });
+      // Step 1: Use browser transcript if available and no specific provider requested
+      if (!sttProvider || sttProvider === 'browser') {
+        if (existingBrowserTranscript || browserTranscript) {
+          const finalTranscript = existingBrowserTranscript || browserTranscript;
+          setCurrentTranscript(finalTranscript);
+          setTranscriptionMethod('browser');
+          setConfidence(browserConfidence || 0.9); // Web Speech API doesn't always provide confidence
+          
+          const result: TranscriptionResult = {
+            transcript: finalTranscript,
+            confidence: browserConfidence || 0.9,
+            provider: 'browser',
+            processingTime: 0,
+            language,
+            timestamp: new Date()
+          };
+          setLastResult(result);
+
+          if (audioDuration !== undefined) {
+            await transcriptHistoryService.addTranscript(result, audioDuration);
+          }
+          setIsTranscribing(false);
+          return;
+        }
+      }
+
+      // Step 2: Fallback to Groq if browser failed or Groq explicitly requested
+      setTranscriptionMethod('groq');
+      setIsFallbackUsed(!!existingBrowserTranscript || !!browserTranscript || sttProvider === STTProviderType.BROWSER);
       
       const result = await transcriptionClient.transcribeAudio(
         audioData,
         language,
-        sttProvider
+        sttProvider || STTProviderType.GROQ
       );
 
       setCurrentTranscript(result.transcript);
       setLastResult(result);
-      setProviderUsed(result.provider);
+      setConfidence(result.confidence);
 
-      // Add to history if duration is provided
       if (audioDuration !== undefined) {
         await transcriptHistoryService.addTranscript(result, audioDuration);
       }
-
-      logger.info('Transcription completed', {
-        provider: result.provider,
-        confidence: result.confidence,
-        processingTime: result.processingTime,
-      });
     } catch (err: any) {
-      const errorMessage = err.message || 'Transcription failed';
-      setError(errorMessage);
+      setError(err.message || 'Transcription failed');
+      setTranscriptionMethod('');
       logger.error('Transcription error', err);
-      throw err;
     } finally {
       setIsTranscribing(false);
     }
@@ -63,7 +98,7 @@ export const useTranscription = () => {
   const clearTranscript = (): void => {
     setCurrentTranscript('');
     setLastResult(null);
-    setProviderUsed('');
+    setTranscriptionMethod('');
   };
 
   const clearError = (): void => {
@@ -73,12 +108,21 @@ export const useTranscription = () => {
   return {
     isTranscribing,
     currentTranscript,
+    interimTranscript,
     lastResult,
     error,
-    providerUsed,
+    transcriptionMethod,
+    isFallbackUsed,
+    confidence,
+    isBrowserListening,
+    isBrowserSupported,
+    browserError,
     startTranscription,
     stopTranscription,
     clearTranscript,
     clearError,
+    startListening,
+    stopListening,
+    resetTranscript
   };
 };
