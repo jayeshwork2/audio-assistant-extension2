@@ -5,13 +5,17 @@ interface Props {
   onStart: () => void;
   onStop: () => void;
   error: string | null;
+  permissionStatus?: 'pending' | 'granted' | 'denied' | 'prompt';
+  isTranscribing?: boolean;
 }
 
 export const RecordingControls: React.FC<Props> = ({
   isRecording,
   onStart,
   onStop,
-  error
+  error,
+  permissionStatus,
+  isTranscribing = false
 }) => {
   const [seconds, setSeconds] = useState(0);
 
@@ -35,10 +39,18 @@ export const RecordingControls: React.FC<Props> = ({
     return [hrs, mins, secs].map(v => v.toString().padStart(2, '0')).join(':');
   };
 
+  const getStatusMessage = () => {
+    if (isRecording) return '● Recording';
+    if (isTranscribing) return 'Processing...';
+    if (permissionStatus === 'denied') return '❌ Permission Denied';
+    if (error) return '⚠️ Error';
+    return 'Ready to record';
+  };
+
   return (
     <div className="recording-controls">
       <div className={`status-indicator ${isRecording ? 'pulsing' : ''}`}>
-        {isRecording ? '● Recording' : 'Ready to record'}
+        {getStatusMessage()}
       </div>
       
       <div className="timer">{formatTime(seconds)}</div>
@@ -46,8 +58,9 @@ export const RecordingControls: React.FC<Props> = ({
       <button 
         className={`record-button ${isRecording ? 'stop' : 'start'}`}
         onClick={isRecording ? onStop : onStart}
+        disabled={isTranscribing}
       >
-        {isRecording ? 'Stop Recording' : 'Start Recording'}
+        {isRecording ? 'Stop Recording' : (isTranscribing ? 'Processing...' : 'Start Recording')}
       </button>
 
       {error && <div className="error-message">{error}</div>}

@@ -15,6 +15,10 @@ export const ProviderIndicator: React.FC<Props> = ({
   const getProviderBadgeClass = (provider: string): string => {
     const lowerProvider = provider.toLowerCase();
     
+    if (lowerProvider.includes('browser')) {
+      return 'provider-badge provider-primary';
+    }
+    
     if (lowerProvider.includes('groq') && !isFallback) {
       return 'provider-badge provider-primary';
     }
@@ -33,6 +37,7 @@ export const ProviderIndicator: React.FC<Props> = ({
   const getProviderIcon = (provider: string): string => {
     const lowerProvider = provider.toLowerCase();
     
+    if (lowerProvider.includes('browser')) return '🌐';
     if (lowerProvider.includes('groq')) return '⚡';
     if (lowerProvider.includes('whisper')) return '🎤';
     if (lowerProvider.includes('openai')) return '🤖';
@@ -46,6 +51,7 @@ export const ProviderIndicator: React.FC<Props> = ({
   const getProviderDisplayName = (provider: string): string => {
     const lowerProvider = provider.toLowerCase();
     
+    if (lowerProvider.includes('browser')) return 'Browser STT';
     if (lowerProvider.includes('groq_whisper') || lowerProvider === 'groq') return 'Groq Whisper';
     if (lowerProvider.includes('whisper_cpp')) return 'Whisper.cpp';
     if (lowerProvider.includes('openai')) return 'OpenAI Whisper';

@@ -7,6 +7,7 @@ import { useTranslation } from './hooks/useTranslation';
 import { useMeeting } from './hooks/useMeeting';
 import { useExport } from './hooks/useExport';
 import { RecordingControls } from './components/RecordingControls';
+import { PermissionRequest } from './components/PermissionRequest';
 import { AudioSourceSelector } from './components/AudioSourceSelector';
 import { AudioLevelVisualizer } from './components/AudioLevelVisualizer';
 import { TranscriptDisplay } from './components/TranscriptDisplay';
@@ -37,8 +38,12 @@ export const App: React.FC = () => {
     micStatus,
     tabStatus,
     error: audioError,
+    permissionStatus,
+    permissionError,
+    interimTranscript: audioInterim,
     startRecording,
     stopRecording,
+    requestMicrophonePermission,
     switchAudioMode,
     audioBlob,
   } = useAudio(settings.audioMode);
@@ -46,9 +51,11 @@ export const App: React.FC = () => {
   const {
     isTranscribing,
     currentTranscript,
+    interimTranscript: transcriptionInterim,
     lastResult,
     error: transcriptionError,
-    providerUsed,
+    transcriptionMethod,
+    isFallbackUsed,
     startTranscription,
     clearTranscript,
     clearError,
@@ -168,11 +175,11 @@ export const App: React.FC = () => {
     clearResponse();
     clearMeetingContext();
     setSelectedHistoryTranscript(null);
-    await startRecording();
+    await startRecording(selectedMode, settings.language);
   };
 
   const handleStopRecording = async () => {
-    const blob = await stopRecording();
+    const { blob, transcript: browserTranscript } = await stopRecording();
     
     // Calculate recording duration
     const duration = recordingStartTimeRef.current 
@@ -185,7 +192,8 @@ export const App: React.FC = () => {
           blob,
           settings.language,
           settings.sttProvider,
-          duration
+          duration,
+          browserTranscript
         );
       } catch (err) {
         // Error is already handled in useTranscription
@@ -310,6 +318,9 @@ export const App: React.FC = () => {
       }
     : lastResult;
 
+  const displayedMethod = selectedHistoryTranscript?.provider || transcriptionMethod;
+  const currentInterim = isRecording ? audioInterim : transcriptionInterim;
+
   // Calculate meeting duration
   const meetingContext = getMeetingContext();
   const duration = meetingContext.duration;
@@ -396,22 +407,34 @@ export const App: React.FC = () => {
                 onStart={handleStartRecording}
                 onStop={handleStopRecording}
                 error={audioError}
+                permissionStatus={permissionStatus}
+                isTranscribing={isTranscribing}
               />
 
-              {(providerUsed || (displayedResult && !selectedHistoryTranscript)) && (
+              {permissionStatus !== 'granted' && (
+                <PermissionRequest 
+                  permissionError={permissionError}
+                  onRetry={requestMicrophonePermission}
+                />
+              )}
+
+              {(displayedMethod || (displayedResult && !selectedHistoryTranscript)) && (
                 <ProviderIndicator 
-                  sttProvider={providerUsed || displayedResult?.provider}
+                  sttProvider={displayedMethod || displayedResult?.provider}
                   aiProvider={settings.aiProvider}
+                  isFallback={isFallbackUsed}
                 />
               )}
 
               <TranscriptDisplay 
                 transcript={displayedTranscript}
+                interimTranscript={currentInterim}
                 isRecording={isRecording}
                 isTranscribing={isTranscribing}
                 transcriptionResult={displayedResult}
                 error={transcriptionError}
                 onClearError={clearError}
+                transcriptionMethod={displayedMethod}
               />
 
               {/* Response Style Selector */}
