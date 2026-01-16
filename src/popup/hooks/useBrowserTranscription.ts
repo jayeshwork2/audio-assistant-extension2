@@ -71,6 +71,16 @@ export const useBrowserTranscription = (): UseBrowserTranscriptionReturn => {
     };
 
     recognition.onend = () => {
+      // If we are still supposed to be listening, restart the recognition
+      // We need to check a ref instead of state to get the latest value without closure stale issues
+      if (recognitionRef.current && !recognitionRef.current.stoppedExplicitly) {
+        try {
+          recognition.start();
+          return;
+        } catch (e) {
+            // Ignore error if already started
+        }
+      }
       setIsListening(false);
     };
 
@@ -88,6 +98,7 @@ export const useBrowserTranscription = (): UseBrowserTranscriptionReturn => {
       setInterimTranscript('');
       setError(undefined);
       setIsFallbackNeeded(false);
+      recognitionRef.current.stoppedExplicitly = false;
       recognitionRef.current.start();
       setIsListening(true);
     } catch (err) {
@@ -98,6 +109,7 @@ export const useBrowserTranscription = (): UseBrowserTranscriptionReturn => {
   const stopListening = useCallback(() => {
     if (!recognitionRef.current) return;
     try {
+      recognitionRef.current.stoppedExplicitly = true;
       recognitionRef.current.stop();
     } catch (err) {
       console.error('Failed to stop speech recognition', err);

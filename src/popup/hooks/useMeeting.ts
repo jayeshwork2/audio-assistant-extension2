@@ -29,7 +29,7 @@ export const useMeeting = () => {
         transcript,
       };
 
-      const result: MeetingDetectionResult = await apiClient.post('/api/meeting/create', request);
+      const result: MeetingDetectionResult = await apiClient.post('/api/meeting/analyze', request);
       
       // Update state with detection results
       setMeetingType(result.meetingType);

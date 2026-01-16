@@ -23,21 +23,16 @@ class TranscriptionClient {
           await this.delay(TRANSCRIPTION_CONFIG.RETRY_DELAY * attempt);
         }
 
-        // const formData = new FormData();
-        // formData.append('audio', audioData, 'recording.webm');
-        // formData.append('language', language);
-        // formData.append('sttProvider', sttProvider);
-
-        const request = {
-          audio: audioData,
-          language,
-          sttProvider,
-        };
+        const formData = new FormData();
+        formData.append('audioData', audioData, 'recording.wav');
+        formData.append('language', language);
+        if (sttProvider) {
+          formData.append('provider', sttProvider);
+        }
 
         const response = await apiClient.post<TranscriptionResult>(
           API_ENDPOINTS.TRANSCRIBE,
-          request,
-          //formData,
+          formData,
           {
             headers: {
               "Content-Type": "multipart/form-data",

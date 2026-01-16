@@ -151,14 +151,15 @@ export const App: React.FC = () => {
 
   // Auto-generate AI response when transcript is ready
   useEffect(() => {
-    if (currentTranscript && currentTranscript.length > 50 && !aiResponse && !isGenerating) {
+    if (currentTranscript && currentTranscript.length > 50 && !aiResponse && !isGenerating && !aiResponseError) {
       const timer = setTimeout(async () => {
         try {
           await generateResponse(
             currentTranscript,
             conversationId,
             selectedResponseStyle,
-            settings.aiProvider
+            settings.aiProvider,
+            (settings.aiProvider === 'gpt4' ? settings.apiKeys.openai : settings.apiKeys[settings.aiProvider])
           );
         } catch (err) {
           console.error('Failed to generate AI response:', err);
@@ -217,7 +218,8 @@ export const App: React.FC = () => {
         currentTranscript,
         conversationId,
         style,
-        settings.aiProvider
+        settings.aiProvider,
+        (settings.aiProvider === 'gpt4' ? settings.apiKeys.openai : settings.apiKeys[settings.aiProvider])
       ).catch(err => {
         console.error('Failed to generate AI response with new style:', err);
       });
@@ -377,6 +379,16 @@ export const App: React.FC = () => {
           >
             ⚙️
           </button>
+          {!new URLSearchParams(window.location.search).get('mode') && (
+            <button
+              className="pop-out-button"
+              onClick={() => chrome.runtime.sendMessage({ type: 'OPEN_FLOATING_WINDOW' })}
+              title="Pop Out"
+              style={{ marginLeft: '8px', background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.2rem' }}
+            >
+              ↗️
+            </button>
+          )}
         </div>
       </header>
 

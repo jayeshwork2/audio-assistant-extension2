@@ -1,5 +1,5 @@
-import { AudioMode } from './audio';
-import { STTProviderType, AIProviderType } from './providers';
+import { AudioMode } from "./audio";
+import { STTProviderType, AIProviderType } from "./providers";
 
 export interface UserSettings {
   audioMode: AudioMode;
@@ -11,10 +11,10 @@ export interface UserSettings {
 }
 
 export const DEFAULT_SETTINGS: UserSettings = {
-  audioMode: 'mic-only',
-  language: 'en-US',
+  audioMode: "mic-only",
+  language: "en-US",
   sttProvider: STTProviderType.BROWSER,
-  aiProvider: AIProviderType.CLAUDE,
+  aiProvider: AIProviderType.GPT4,
   apiKeys: {},
   autoSave: true,
 };

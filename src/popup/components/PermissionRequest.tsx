@@ -31,8 +31,17 @@ export const PermissionRequest: React.FC<PermissionRequestProps> = ({
         </div>
       )}
 
-      <button className="primary-button" onClick={onRetry}>
-        {permissionError ? 'Try Again' : 'Grant Permission'}
+      <button 
+        className="primary-button" 
+        onClick={() => {
+          if (permissionError) {
+            chrome.runtime.openOptionsPage();
+          } else {
+            onRetry();
+          }
+        }}
+      >
+        {permissionError ? 'Open Settings' : 'Grant Permission'}
       </button>
     </div>
   );

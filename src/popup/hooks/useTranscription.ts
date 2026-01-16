@@ -40,9 +40,13 @@ export const useTranscription = () => {
     
     try {
       // Step 1: Use browser transcript if available and no specific provider requested
+      // Step 1: Use browser transcript if available and no specific provider requested
       if (!sttProvider || sttProvider === 'browser') {
-        if (existingBrowserTranscript || browserTranscript) {
-          const finalTranscript = existingBrowserTranscript || browserTranscript;
+        // If we have text OR if the user explicitly requested 'browser', we stop here.
+        // This prevents falling back to the backend if the user only wanted browser STT but got silence.
+        if (existingBrowserTranscript || browserTranscript || sttProvider === 'browser') {
+          const finalTranscript = existingBrowserTranscript || browserTranscript || '';
+          
           setCurrentTranscript(finalTranscript);
           setTranscriptionMethod('browser');
           setConfidence(browserConfidence || 0.9); // Web Speech API doesn't always provide confidence
@@ -57,8 +61,9 @@ export const useTranscription = () => {
           };
           setLastResult(result);
 
-          if (audioDuration !== undefined) {
-            await transcriptHistoryService.addTranscript(result, audioDuration);
+          if (finalTranscript && audioDuration !== undefined) {
+             // Only save to history if we actually have text
+             await transcriptHistoryService.addTranscript(result, audioDuration);
           }
           setIsTranscribing(false);
           return;
@@ -67,7 +72,7 @@ export const useTranscription = () => {
 
       // Step 2: Fallback to Groq if browser failed or Groq explicitly requested
       setTranscriptionMethod('groq');
-      setIsFallbackUsed(!!existingBrowserTranscript || !!browserTranscript || sttProvider === STTProviderType.BROWSER);
+      setIsFallbackUsed(!!existingBrowserTranscript || !!browserTranscript);
       
       const result = await transcriptionClient.transcribeAudio(
         audioData,

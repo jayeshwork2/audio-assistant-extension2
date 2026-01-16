@@ -20,7 +20,11 @@ export interface ResponseStyle {
 
 export interface AIResponse {
   response: string;
-  metadata: ResponseMetadata;
+  provider: string;
+  tokensUsed: number;
+  timestamp: string;
+  style: string;
+  //metadata: ResponseMetadata;
 }
 
 export interface GenerateAIRequest {
@@ -28,4 +32,5 @@ export interface GenerateAIRequest {
   conversationId: string;
   responseStyle: string;
   aiProvider?: string;
+  usersApikey?: string;
 }

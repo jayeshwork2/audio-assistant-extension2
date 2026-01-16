@@ -23,10 +23,7 @@ class APIClient {
     this.axiosInstance.interceptors.response.use(
       (response) => response,
       async (error) => {
-        if (error.response?.status === 401) {
-          // Handle token refresh or logout
-          logger.warn('Unauthorized access - potential token expiration');
-        }
+        // In no-auth mode, 401 might still occur if backend config is wrong, but we suppress the warning for now or handle it silently.
         return Promise.reject(error);
       }
     );

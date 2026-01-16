@@ -11,6 +11,14 @@ export const setupListeners = () => {
       case 'STOP_RECORDING':
         // Handle background recording stop if needed
         break;
+      case 'OPEN_FLOATING_WINDOW':
+        chrome.windows.create({
+          url: 'popup.html?mode=floating',
+          type: 'popup',
+          width: 400,
+          height: 600
+        });
+        break;
     }
     
     return true;
