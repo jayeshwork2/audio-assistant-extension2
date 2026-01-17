@@ -7,6 +7,7 @@ interface Props {
   error: string | null;
   permissionStatus?: 'pending' | 'granted' | 'denied' | 'prompt';
   isTranscribing?: boolean;
+  startTime?: number | null;
 }
 
 export const RecordingControls: React.FC<Props> = ({
@@ -15,22 +16,35 @@ export const RecordingControls: React.FC<Props> = ({
   onStop,
   error,
   permissionStatus,
-  isTranscribing = false
+  isTranscribing = false,
+  startTime
 }) => {
   const [seconds, setSeconds] = useState(0);
 
   useEffect(() => {
     let interval: any;
     if (isRecording) {
-      interval = setInterval(() => {
-        setSeconds(s => s + 1);
-      }, 1000);
+      if (startTime) {
+          // Sync with provided start time
+          const updateTime = () => {
+              const diff = Math.floor((Date.now() - startTime) / 1000);
+              setSeconds(diff >= 0 ? diff : 0);
+          };
+          updateTime(); // initial
+          interval = setInterval(updateTime, 1000);
+      } else {
+          // Fallback to local count if no startTime (shouldn't happen often)
+          setSeconds(0);
+          interval = setInterval(() => {
+            setSeconds(s => s + 1);
+          }, 1000);
+      }
     } else {
       setSeconds(0);
       clearInterval(interval);
     }
     return () => clearInterval(interval);
-  }, [isRecording]);
+  }, [isRecording, startTime]);
 
   const formatTime = (s: number) => {
     const hrs = Math.floor(s / 3600);

@@ -10,23 +10,51 @@ export class AudioCaptureService {
   private chunks: Blob[] = [];
   private mixer: AudioMixer | null = null;
 
-  async startRecording(mode: AudioMode): Promise<void> {
+  async startRecording(mode: AudioMode, streamId?: string): Promise<void> {
     this.chunks = [];
     this.mixer = new AudioMixer();
 
     try {
       if (mode === 'mic-only' || mode === 'mic+tab') {
-        this.micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        this.micStream = await navigator.mediaDevices.getUserMedia({ 
+            audio: {
+                echoCancellation: true,
+                noiseSuppression: true,
+                autoGainControl: true
+            } 
+        });
       }
 
       if (mode === 'tab-only' || mode === 'mic+tab') {
         try {
-          this.tabStream = await (navigator.mediaDevices as any).getDisplayMedia({
-            video: { displaySurface: 'browser' },
-            audio: true,
-            preferCurrentTab: true,
-          });
+          if (streamId) {
+            logger.debug('Starting Offscreen capture with streamId', streamId);
+            // Offscreen capture using streamId from chrome.tabCapture
+            this.tabStream = await navigator.mediaDevices.getUserMedia({
+                audio: {
+                    mandatory: {
+                        chromeMediaSource: 'tab',
+                        chromeMediaSourceId: streamId
+                    }
+                } as any,
+                video: {
+                    mandatory: {
+                        chromeMediaSource: 'tab',
+                        chromeMediaSourceId: streamId
+                    }
+                } as any
+            });
+            logger.debug('Offscreen capture successful, tracks:', this.tabStream.getTracks().length);
+          } else {
+             // Fallback for non-offscreen (though we intend to use offscreen primarily now)
+             this.tabStream = await (navigator.mediaDevices as any).getDisplayMedia({
+                video: { displaySurface: 'browser' },
+                audio: true,
+                preferCurrentTab: true,
+             });
+          }
           
+          // We only need audio, so stop video tracks to save resources
           const videoTracks = this.tabStream?.getVideoTracks();
           videoTracks?.forEach(track => track.stop());
         } catch (err) {

@@ -1,16 +1,14 @@
 import React from 'react';
-import { STTProviderType, AIProviderType } from '../../shared/types/providers';
+import { AIProviderType } from '../../shared/types/providers';
 
 interface Props {
   sttProvider?: string;
   aiProvider?: AIProviderType;
-  isFallback?: boolean;
 }
 
 export const ProviderIndicator: React.FC<Props> = ({
   sttProvider,
   aiProvider,
-  isFallback = false,
 }) => {
   const getProviderBadgeClass = (provider: string): string => {
     const lowerProvider = provider.toLowerCase();
@@ -19,12 +17,8 @@ export const ProviderIndicator: React.FC<Props> = ({
       return 'provider-badge provider-primary';
     }
     
-    if (lowerProvider.includes('groq') && !isFallback) {
+    if (lowerProvider.includes('groq')) {
       return 'provider-badge provider-primary';
-    }
-    
-    if (isFallback) {
-      return 'provider-badge provider-fallback';
     }
     
     if (lowerProvider.includes('custom') || lowerProvider.includes('user')) {
@@ -68,9 +62,6 @@ export const ProviderIndicator: React.FC<Props> = ({
     
     if (sttProvider) {
       tooltip += `Speech-to-Text: ${getProviderDisplayName(sttProvider)}`;
-      if (isFallback) {
-        tooltip += ' (Fallback)';
-      }
     }
     
     if (aiProvider) {
@@ -91,7 +82,6 @@ export const ProviderIndicator: React.FC<Props> = ({
         <div className={getProviderBadgeClass(sttProvider)}>
           <span className="provider-icon">{getProviderIcon(sttProvider)}</span>
           <span className="provider-name">{getProviderDisplayName(sttProvider)}</span>
-          {isFallback && <span className="fallback-indicator">⚠️</span>}
         </div>
       )}
       

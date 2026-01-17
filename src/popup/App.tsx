@@ -1,11 +1,9 @@
+
 import React, { useState, useRef, useEffect } from 'react';
 import { useAudio } from './hooks/useAudio';
 import { useSettings } from './hooks/useSettings';
 import { useTranscription } from './hooks/useTranscription';
 import { useAIResponse } from './hooks/useAIResponse';
-import { useTranslation } from './hooks/useTranslation';
-import { useMeeting } from './hooks/useMeeting';
-import { useExport } from './hooks/useExport';
 import { RecordingControls } from './components/RecordingControls';
 import { PermissionRequest } from './components/PermissionRequest';
 import { AudioSourceSelector } from './components/AudioSourceSelector';
@@ -13,17 +11,10 @@ import { AudioLevelVisualizer } from './components/AudioLevelVisualizer';
 import { TranscriptDisplay } from './components/TranscriptDisplay';
 import { SettingsPanel } from './components/SettingsPanel';
 import { TranscriptHistory } from './components/TranscriptHistory';
-import { ProviderIndicator } from './components/ProviderIndicator';
 import { AIResponseDisplay } from './components/AIResponseDisplay';
 import { ResponseStyleSelector } from './components/ResponseStyleSelector';
-import { TranslationPanel } from './components/TranslationPanel';
-import { MeetingDetection } from './components/MeetingDetection';
-import { ExportPanel } from './components/ExportPanel';
 import { Transcript } from '../shared/types/transcription';
-import { ResponseMetadata } from '../shared/types/ai-response';
-import { TranslationHistoryItem } from '../shared/types/translation';
-import { MeetingContext } from '../shared/types/meeting';
-import { ExportHistoryItem } from '../shared/types/export';
+import { GroqService } from '../shared/services/groq-service';
 import './styles/App.css';
 
 export const App: React.FC = () => {
@@ -46,6 +37,7 @@ export const App: React.FC = () => {
     requestMicrophonePermission,
     switchAudioMode,
     audioBlob,
+    startTime,
   } = useAudio(settings.audioMode);
 
   const {
@@ -55,7 +47,6 @@ export const App: React.FC = () => {
     lastResult,
     error: transcriptionError,
     transcriptionMethod,
-    isFallbackUsed,
     startTranscription,
     clearTranscript,
     clearError,
@@ -72,61 +63,14 @@ export const App: React.FC = () => {
     clearError: clearAIError,
   } = useAIResponse();
 
-  const {
-    translatedText,
-    isTranslating,
-    error: translationError,
-    history: translationHistory,
-    sourceLanguage,
-    targetLanguage,
-    translateText,
-    detectLanguage,
-    setLanguagePair,
-    swapLanguages,
-    clearHistory: clearTranslationHistory,
-    selectHistoryItem: selectTranslationHistoryItem,
-    clearError: clearTranslationError,
-  } = useTranslation();
 
-  const {
-    meetingType,
-    domain,
-    formality,
-    urgency,
-    summary,
-    keyPoints,
-    actionItems,
-    isDetecting,
-    error: meetingError,
-    detectMeetingContext,
-    generateMeetingNotes,
-    updateMeetingType,
-    updateDomain,
-    getMeetingContext,
-    clearMeetingContext,
-    clearError: clearMeetingError,
-  } = useMeeting();
-
-  const {
-    isExporting,
-    exportError,
-    lastExportUrl,
-    exportHistory,
-    exportAsPdf,
-    exportAsMarkdown,
-    exportAsText,
-    emailExport,
-    clearExportError,
-    openFile,
-  } = useExport();
 
   const [showSettings, setShowSettings] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
-  const [showTranslation, setShowTranslation] = useState(false);
   const [selectedHistoryTranscript, setSelectedHistoryTranscript] = useState<Transcript | null>(null);
   const [selectedResponseStyle, setSelectedResponseStyle] = useState('formal');
   const [conversationId, setConversationId] = useState<string>('');
-  const [meetingId, setMeetingId] = useState<string | undefined>();
+  const [meetingId] = useState<string | undefined>(undefined); // kept for potential future use or removed if fully unused
   const recordingStartTimeRef = useRef<number | null>(null);
 
   // Generate conversation ID on component mount
@@ -134,24 +78,11 @@ export const App: React.FC = () => {
     setConversationId(`conv_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`);
   }, []);
 
-  // Auto-detect meeting context when transcript is ready
-  useEffect(() => {
-    if (currentTranscript && currentTranscript.length > 50) {
-      const timer = setTimeout(async () => {
-        try {
-          await detectMeetingContext(currentTranscript);
-        } catch (err) {
-          console.error('Failed to detect meeting context:', err);
-        }
-      }, 1000); // Delay to avoid too frequent calls
-
-      return () => clearTimeout(timer);
-    }
-  }, [currentTranscript, detectMeetingContext]);
+  // Removed auto-detect meeting context effect
 
   // Auto-generate AI response when transcript is ready
   useEffect(() => {
-    if (currentTranscript && currentTranscript.length > 50 && !aiResponse && !isGenerating && !aiResponseError) {
+    if (currentTranscript && currentTranscript.length > 10 && !aiResponse && !isGenerating && !aiResponseError) {
       const timer = setTimeout(async () => {
         try {
           await generateResponse(
@@ -159,155 +90,20 @@ export const App: React.FC = () => {
             conversationId,
             selectedResponseStyle,
             settings.aiProvider,
-            (settings.aiProvider === 'gpt4' ? settings.apiKeys.openai : settings.apiKeys[settings.aiProvider])
+            (settings.aiProvider === 'gpt4' ? settings.apiKeys.openai : settings.apiKeys[settings.aiProvider as keyof typeof settings.apiKeys]),
+            settings.userContext,
+            settings.responseLanguage
           );
         } catch (err) {
           console.error('Failed to generate AI response:', err);
         }
-      }, 1500); // Delay to allow for meeting detection
+      }, 1500);
 
       return () => clearTimeout(timer);
     }
-  }, [currentTranscript, conversationId, selectedResponseStyle, settings.aiProvider, generateResponse, aiResponse, isGenerating]);
+  }, [currentTranscript, conversationId, selectedResponseStyle, settings.aiProvider, generateResponse, aiResponse, isGenerating, settings.apiKeys, settings.userContext, settings.responseLanguage]);
 
-  const handleStartRecording = async () => {
-    recordingStartTimeRef.current = Date.now();
-    clearTranscript();
-    clearResponse();
-    clearMeetingContext();
-    setSelectedHistoryTranscript(null);
-    await startRecording(selectedMode, settings.language);
-  };
-
-  const handleStopRecording = async () => {
-    const { blob, transcript: browserTranscript } = await stopRecording();
-    
-    // Calculate recording duration
-    const duration = recordingStartTimeRef.current 
-      ? (Date.now() - recordingStartTimeRef.current) / 1000 
-      : 0;
-
-    if (blob) {
-      try {
-        await startTranscription(
-          blob,
-          settings.language,
-          settings.sttProvider,
-          duration,
-          browserTranscript
-        );
-      } catch (err) {
-        // Error is already handled in useTranscription
-        console.error('Transcription failed', err);
-      }
-    }
-  };
-
-  const handleSelectHistoryTranscript = (transcript: Transcript) => {
-    setSelectedHistoryTranscript(transcript);
-    clearTranscript();
-    clearResponse();
-    clearMeetingContext();
-  };
-
-  const handleStyleChange = (style: string) => {
-    setSelectedResponseStyle(style);
-    // If we have a current transcript, regenerate with new style
-    if (currentTranscript && currentTranscript.length > 50) {
-      generateResponse(
-        currentTranscript,
-        conversationId,
-        style,
-        settings.aiProvider,
-        (settings.aiProvider === 'gpt4' ? settings.apiKeys.openai : settings.apiKeys[settings.aiProvider])
-      ).catch(err => {
-        console.error('Failed to generate AI response with new style:', err);
-      });
-    }
-  };
-
-  const handleTranslationRequest = async (text: string, sourceLang?: string, targetLang?: string) => {
-    try {
-      await translateText(text, sourceLang, targetLang);
-    } catch (err) {
-      console.error('Translation failed:', err);
-    }
-  };
-
-  const handleSourceChange = (lang: string) => {
-    setLanguagePair(lang, targetLanguage);
-  };
-
-  const handleTargetChange = (lang: string) => {
-    setLanguagePair(sourceLanguage, lang);
-  };
-
-  const handleTranslationRequestWrapper = () => {
-    if (displayedTranscript) {
-      handleTranslationRequest(displayedTranscript);
-    }
-  };
-
-  const handleSelectTranslationHistoryItem = (item: TranslationHistoryItem) => {
-    const index = translationHistory.findIndex(h => h.id === item.id);
-    if (index >= 0) {
-      selectTranslationHistoryItem(index);
-    }
-  };
-
-  const handleMeetingContextUpdate = async (updates: Partial<MeetingContext>) => {
-    try {
-      if (updates.meetingType && updates.meetingType !== meetingType) {
-        await updateMeetingType(updates.meetingType);
-      }
-      if (updates.domain && updates.domain !== domain) {
-        await updateDomain(updates.domain);
-      }
-    } catch (err) {
-      console.error('Failed to update meeting context:', err);
-    }
-  };
-
-  const handleExportPdf = async () => {
-    if (meetingId) {
-      try {
-        await exportAsPdf(meetingId);
-      } catch (err) {
-        console.error('PDF export failed:', err);
-      }
-    }
-  };
-
-  const handleExportMarkdown = async () => {
-    if (meetingId) {
-      try {
-        await exportAsMarkdown(meetingId);
-      } catch (err) {
-        console.error('Markdown export failed:', err);
-      }
-    }
-  };
-
-  const handleExportText = async () => {
-    if (meetingId) {
-      try {
-        await exportAsText(meetingId);
-      } catch (err) {
-        console.error('Text export failed:', err);
-      }
-    }
-  };
-
-  const handleEmailExport = async (email: string, format: 'pdf' | 'markdown' | 'text') => {
-    if (meetingId) {
-      try {
-        await emailExport(meetingId, email, format);
-      } catch (err) {
-        console.error('Email export failed:', err);
-      }
-    }
-  };
-
+  // Move displayedTranscript definition up to be available for handlers
   const displayedTranscript = selectedHistoryTranscript?.transcript || currentTranscript;
   const displayedResult = selectedHistoryTranscript 
     ? {
@@ -323,9 +119,114 @@ export const App: React.FC = () => {
   const displayedMethod = selectedHistoryTranscript?.provider || transcriptionMethod;
   const currentInterim = isRecording ? audioInterim : transcriptionInterim;
 
-  // Calculate meeting duration
-  const meetingContext = getMeetingContext();
-  const duration = meetingContext.duration;
+  const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
+
+  const handleStartRecording = async () => {
+    if (downloadUrl) {
+      URL.revokeObjectURL(downloadUrl);
+      setDownloadUrl(null);
+    }
+    recordingStartTimeRef.current = Date.now();
+    clearTranscript();
+    clearResponse();
+    setSelectedHistoryTranscript(null);
+    await startRecording(selectedMode, settings.language);
+  };
+
+  const handleStopRecording = async () => {
+    const { blob, transcript: browserTranscript } = await stopRecording();
+    
+    // Calculate recording duration
+    const duration = recordingStartTimeRef.current 
+      ? (Date.now() - recordingStartTimeRef.current) / 1000 
+      : 0;
+
+    if (blob) {
+      // Create download URL
+      const url = URL.createObjectURL(blob);
+      setDownloadUrl(url);
+
+      try {
+        let finalTranscript = browserTranscript;
+        let providerUsed = 'browser';
+
+        // Use Groq if available and appropriate (Tab audio involved or Groq preferred)
+        // For Tab modes, browser transcript is likely empty/partial, so Groq is essential.
+        if ((selectedMode === 'tab-only' || selectedMode === 'mic+tab') && settings.apiKeys.groq) {
+           try {
+             // Show processing state? useTranscription has isTranscribing state but startTranscription sets it.
+             // We can manually call startTranscription below with the blob, but we want to substitute the transcript content.
+             // Actually startTranscription takes a blob and *optionally* a transcript.
+             // We should let startTranscription handle it if we modify it to support an external fetch?
+             // Or fetch here and pass the result.
+             
+             // We'll modify the flow to fetch Groq here:
+             const groqTranscript = await GroqService.transcribeAudio(blob, settings.apiKeys.groq, settings.language);
+             if (groqTranscript) {
+                 finalTranscript = groqTranscript;
+                 providerUsed = 'groq';
+             }
+           } catch (groqErr) {
+               console.error('Groq transcription failed, falling back to browser transcript', groqErr);
+           }
+        }
+
+        await startTranscription(
+          blob,
+          settings.language,
+          providerUsed as any, // Cast to STTProviderType
+          duration,
+          finalTranscript 
+        );
+        if (finalTranscript && finalTranscript.length > 5) {
+            try {
+                // Explicitly trigger AI response
+                await generateResponse(
+                    finalTranscript,
+                    conversationId,
+                    selectedResponseStyle,
+                    settings.aiProvider,
+                    (settings.aiProvider === 'gpt4' ? settings.apiKeys.openai : settings.apiKeys[settings.aiProvider as keyof typeof settings.apiKeys]),
+                    settings.userContext,
+                    settings.responseLanguage
+                );
+            } catch (aiErr) {
+                console.error('Auto-generate AI response failed:', aiErr);
+                // The error state in useAIResponse should handle the UI display
+            }
+        }
+      } catch (err) {
+        // Error is already handled in useTranscription
+        console.error('Transcription failed', err);
+      }
+    }
+  };
+
+  const handleSelectHistoryTranscript = (transcript: Transcript) => {
+    setSelectedHistoryTranscript(transcript);
+    clearTranscript();
+    clearResponse();
+  };
+
+  const handleStyleChange = (style: string) => {
+    setSelectedResponseStyle(style);
+    // If we have a current transcript, regenerate with new style
+    if (currentTranscript && currentTranscript.length > 50) {
+      generateResponse(
+        currentTranscript,
+        conversationId,
+        style,
+        settings.aiProvider,
+        (settings.aiProvider === 'gpt4' ? settings.apiKeys.openai : settings.apiKeys[settings.aiProvider as keyof typeof settings.apiKeys]),
+        settings.userContext,
+        settings.responseLanguage
+      ).catch(err => {
+        console.error('Failed to generate AI response with new style:', err);
+      });
+    }
+  };
+
+
 
   if (settingsLoading) return <div className="loading-screen">Loading...</div>;
 
@@ -334,43 +235,12 @@ export const App: React.FC = () => {
       <header className="app-header">
         <h1>Audio Assistant</h1>
         <div className="header-actions">
-          {(meetingType || domain || formality || urgency) && (
-            <div className="meeting-badges">
-              {meetingType && (
-                <span className="badge meeting-type" title={`Meeting Type: ${meetingType}`}>
-                  {meetingType === 'meeting' ? '👥' : 
-                   meetingType === 'interview' ? '💼' :
-                   meetingType === 'sales' ? '💰' : '📚'} {meetingType}
-                </span>
-              )}
-              {domain && (
-                <span className="badge domain" title={`Domain: ${domain}`}>
-                  {domain === 'technical' ? '⚙️' :
-                   domain === 'business' ? '💼' :
-                   domain === 'legal' ? '⚖️' : '🏥'} {domain}
-                </span>
-              )}
-              {urgency && (
-                <span className="badge urgency" title={`Urgency: ${urgency}`}>
-                  {urgency === 'high' ? '🔴' :
-                   urgency === 'medium' ? '🟡' : '🟢'} {urgency}
-                </span>
-              )}
-            </div>
-          )}
           <button 
             className={`history-toggle ${showHistory ? 'active' : ''}`}
             onClick={() => setShowHistory(!showHistory)}
             title="Transcript History"
           >
             📜
-          </button>
-          <button 
-            className={`translation-toggle ${showTranslation ? 'active' : ''}`}
-            onClick={() => setShowTranslation(!showTranslation)}
-            title="Translation Panel"
-          >
-            🌍
           </button>
           <button 
             className="settings-toggle" 
@@ -421,20 +291,34 @@ export const App: React.FC = () => {
                 error={audioError}
                 permissionStatus={permissionStatus}
                 isTranscribing={isTranscribing}
+                startTime={startTime}
               />
+
+              {downloadUrl && (
+                <div className="download-section" style={{ textAlign: 'center', marginTop: '10px' }}>
+                  <a 
+                    href={downloadUrl} 
+                    download={`recording-${new Date().toISOString()}.webm`}
+                    className="download-link"
+                    style={{ 
+                        display: 'inline-block', 
+                        padding: '8px 16px', 
+                        background: '#4CAF50', 
+                        color: 'white', 
+                        textDecoration: 'none', 
+                        borderRadius: '4px',
+                        fontSize: '14px'
+                    }}
+                  >
+                    💾 Download Recording
+                  </a>
+                </div>
+              )}
 
               {permissionStatus !== 'granted' && (
                 <PermissionRequest 
                   permissionError={permissionError}
                   onRetry={requestMicrophonePermission}
-                />
-              )}
-
-              {(displayedMethod || (displayedResult && !selectedHistoryTranscript)) && (
-                <ProviderIndicator 
-                  sttProvider={displayedMethod || displayedResult?.provider}
-                  aiProvider={settings.aiProvider}
-                  isFallback={isFallbackUsed}
                 />
               )}
 
@@ -469,22 +353,6 @@ export const App: React.FC = () => {
                   onClearError={clearAIError}
                 />
               )}
-
-              {/* Meeting Detection */}
-              {(meetingType || domain || formality || urgency || isDetecting) && (
-                <MeetingDetection
-                  meetingType={meetingType}
-                  domain={domain}
-                  formality={formality}
-                  urgency={urgency}
-                  duration={duration}
-                  summary={summary}
-                  keyPoints={keyPoints}
-                  actionItems={actionItems}
-                  isDetecting={isDetecting}
-                  onUpdate={handleMeetingContextUpdate}
-                />
-              )}
             </div>
 
             {/* Side panels */}
@@ -496,44 +364,7 @@ export const App: React.FC = () => {
               </div>
             )}
 
-            {showTranslation && (
-              <div className="translation-panel">
-                <TranslationPanel
-                  originalText={displayedTranscript || ''}
-                  translatedText={translatedText}
-                  isTranslating={isTranslating}
-                  sourceLanguage={sourceLanguage}
-                  targetLanguage={targetLanguage}
-                  error={translationError || undefined}
-                  history={translationHistory}
-                  onSelectHistoryItem={handleSelectTranslationHistoryItem}
-                  onTranslate={handleTranslationRequest}
-                  onSourceChange={handleSourceChange}
-                  onTargetChange={handleTargetChange}
-                  onSwap={swapLanguages}
-                  onRetry={handleTranslationRequestWrapper}
-                  onClearError={clearTranslationError}
-                />
-              </div>
-            )}
 
-            {/* Export Panel */}
-            {displayedTranscript && (
-              <div className="export-panel-container">
-                <ExportPanel
-                  meetingId={meetingId}
-                  transcriptText={displayedTranscript}
-                  isExporting={isExporting}
-                  exportError={exportError || undefined}
-                  lastExportUrl={lastExportUrl}
-                  onExportPdf={handleExportPdf}
-                  onExportMarkdown={handleExportMarkdown}
-                  onExportText={handleExportText}
-                  onEmailExport={(email, format) => handleEmailExport(email, format as 'pdf' | 'markdown' | 'text')}
-                  exportHistory={exportHistory}
-                />
-              </div>
-            )}
           </div>
         ) : (
           <SettingsPanel 

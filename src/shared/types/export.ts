@@ -8,7 +8,7 @@ export interface ExportHistoryItem {
   errorMessage?: string;
 }
 
-export type ExportFormat = 'pdf' | 'markdown' | 'text' | 'email';
+export type ExportFormat = 'markdown' | 'text';
 
 export interface ExportRequest {
   meetingId: string;
@@ -20,10 +20,4 @@ export interface ExportResult {
   url?: string;
   success: boolean;
   errorMessage?: string;
-}
-
-export interface EmailExportRequest {
-  meetingId: string;
-  email: string;
-  format: ExportFormat;
 }

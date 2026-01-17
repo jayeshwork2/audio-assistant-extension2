@@ -41,7 +41,39 @@ export const useAudio = (initialMode: AudioMode = 'mic-only') => {
   const audioServiceRef = useRef(new AudioCaptureService());
   const animationFrameRef = useRef<number>();
 
+  const [startTime, setStartTime] = useState<number | null>(null);
+
   useEffect(() => {
+    // Check initial recording status with retry
+    const checkStatus = async () => {
+        let retries = 3;
+        while (retries > 0) {
+            try {
+                logger.debug(`Checking recording status (attempts left: ${retries})...`);
+                const response = await chrome.runtime.sendMessage({ type: 'CHECK_RECORDING_STATUS' });
+                logger.debug('Recording status response:', response);
+                
+                if (response && response.isRecording) {
+                    setIsRecording(true);
+                    if (response.startTime) setStartTime(response.startTime);
+                    
+                    if (response.mode) {
+                        setSelectedMode(response.mode);
+                        if (response.mode === 'mic-only' || response.mode === 'mic+tab') setMicStatus('recording');
+                        if (response.mode === 'tab-only' || response.mode === 'mic+tab') setTabStatus('recording');
+                    }
+                    return; // Found it, exit
+                }
+            } catch (err) {
+                logger.error('Failed to check status', err);
+            }
+            // Wait bit before retry
+            retries--;
+            if (retries > 0) await new Promise(r => setTimeout(r, 200));
+        }
+    };
+    checkStatus();
+
     // Check if permission was already granted
     if (navigator.permissions && navigator.permissions.query) {
       navigator.permissions.query({ name: 'microphone' as any }).then(result => {
@@ -104,7 +136,7 @@ export const useAudio = (initialMode: AudioMode = 'mic-only') => {
     const activeMode = mode || selectedMode;
     setError(null);
 
-    // Check permission first
+    // Check permission first (still doing this locally to trigger prompt)
     if (activeMode !== 'tab-only' && permissionStatus !== 'granted') {
       const granted = await requestMicrophonePermission();
       if (!granted) {
@@ -114,14 +146,27 @@ export const useAudio = (initialMode: AudioMode = 'mic-only') => {
     }
 
     try {
-      await audioServiceRef.current.startRecording(activeMode);
-      setIsRecording(true);
-      startVisualization();
+      // Send message to background to start offscreen recording
+      const response = await chrome.runtime.sendMessage({
+          type: 'START_RECORDING_REQUEST',
+          mode: activeMode,
+          language
+      });
       
-      // Start browser transcription simultaneously
-      setTranscriptionMethod('browser');
-      setTranscriptionError(null);
-      startListening(language);
+      if (response && response.success === false) {
+          throw new Error(response.error);
+      }
+
+      setIsRecording(true);
+      // startVisualization(); // Visualization disabled for remote recording for now
+      
+      // Start browser transcription locally if Mic is involved (optional, or rely on offscreen transcription)
+      // For now, let's keep local transcription as "backup" or primary for Mic Only if offscreen doesn't handle it yet fully for UI
+      if (activeMode !== 'tab-only') {
+          setTranscriptionMethod('browser');
+          setTranscriptionError(null);
+          startListening(language);
+      }
 
       if (activeMode === 'mic-only' || activeMode === 'mic+tab') setMicStatus('recording');
       if (activeMode === 'tab-only' || activeMode === 'mic+tab') setTabStatus('recording');
@@ -133,10 +178,38 @@ export const useAudio = (initialMode: AudioMode = 'mic-only') => {
 
   const stopRecording = async (): Promise<{ blob: Blob | null, transcript: string }> => {
     try {
-      const blob = await audioServiceRef.current.stopRecording();
+        // Send stop message
+        await chrome.runtime.sendMessage({ type: 'STOP_RECORDING_REQUEST' });
+        
+        // Wait for data? We need to wait for the RECORDING_COMPLETE message or resolve here?
+        // To simplify integration with App.tsx which expects a return value:
+        // We might need to wait for a promise that resolves when the message arrives.
+        
+        // However, we can listen for the message in a global listener or here.
+        // Let's create a one-time listener promise
+        const audioDataPromise = new Promise<Blob | null>((resolve) => {
+             const listener = (message: any) => {
+                 if (message.type === 'RECORDING_COMPLETE') {
+                     chrome.runtime.onMessage.removeListener(listener);
+                     // convert base64 to blob
+                     fetch(message.audioData)
+                     .then(res => res.blob())
+                     .then(resolve)
+                     .catch(() => resolve(null));
+                 }
+             };
+             chrome.runtime.onMessage.addListener(listener);
+             // Timeout fallback
+             setTimeout(() => {
+                 chrome.runtime.onMessage.removeListener(listener);
+                 resolve(null);
+             }, 5000);
+        });
+
+      const blob = await audioDataPromise;
       setAudioBlob(blob);
       setIsRecording(false);
-      stopVisualization();
+      // stopVisualization();
       
       // Stop browser transcription
       stopListening();
@@ -248,6 +321,7 @@ export const useAudio = (initialMode: AudioMode = 'mic-only') => {
     stopRecording,
     requestMicrophonePermission,
     switchAudioMode,
+    startTime,
     resetAudio: () => audioServiceRef.current.resetAudio(),
   };
 };

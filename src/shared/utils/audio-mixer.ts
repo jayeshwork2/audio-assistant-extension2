@@ -17,6 +17,10 @@ export class AudioMixer {
 
     this.micGain.connect(this.destination);
     this.tabGain.connect(this.destination);
+    
+    // Also connect tab audio to the hardware output (speakers) so user can hear it
+    // Do NOT connect mic to speakers to avoid feedback loop
+    this.tabGain.connect(this.audioContext.destination);
 
     // Default 50/50 mix
     this.micGain.gain.value = 0.5;
@@ -26,6 +30,10 @@ export class AudioMixer {
   async mixStreams(micStream: MediaStream | null, tabStream: MediaStream | null): Promise<MediaStream> {
     if (!this.audioContext || !this.destination) {
       throw new Error('AudioMixer not initialized');
+    }
+
+    if (this.audioContext.state === 'suspended') {
+      await this.audioContext.resume();
     }
 
     if (micStream) {

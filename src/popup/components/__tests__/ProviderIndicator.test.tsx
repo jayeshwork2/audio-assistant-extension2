@@ -35,12 +35,4 @@ describe('ProviderIndicator', () => {
     expect(component.props.aiProvider).toBe(AIProviderType.GPT4);
   });
 
-  it('should accept isFallback prop', () => {
-    const component = React.createElement(ProviderIndicator, {
-      sttProvider: 'whisper_cpp',
-      isFallback: true,
-    });
-    expect(component).toBeDefined();
-    expect(component.props.isFallback).toBe(true);
-  });
 });

@@ -4,7 +4,7 @@ import {
   ResponseMetadata,
   GenerateAIRequest,
 } from "../../shared/types/ai-response";
-import { apiClient } from "../../shared/services/api-service";
+import { openaiService } from "../../shared/services/openai-service";
 import { logger } from "../../shared/utils/logger";
 
 export const useAIResponse = () => {
@@ -20,7 +20,9 @@ export const useAIResponse = () => {
       conversationId: string,
       responseStyle: string,
       aiProvider?: string,
-      usersApikey?: string
+      usersApikey?: string,
+      userContext?: string,
+      responseLanguage?: string
     ): Promise<void> => {
       setIsGenerating(true);
       setError(null);
@@ -37,27 +39,37 @@ export const useAIResponse = () => {
       lastRequestRef.current = request;
 
       try {
+        if (!usersApikey) {
+            throw new Error("OpenAI API Key is missing");
+        }
+
         logger.info("Generating AI response", {
           transcriptLength: transcript.length,
           conversationId,
           responseStyle,
           aiProvider,
-          usersApikey,
+          usersApikey: usersApikey ? "***" : "missing",
         });
 
-        const result: AIResponse = await apiClient.post(
-          "/api/response/generate",
-          request
+        // Use OpenAI service directly
+        const result: AIResponse = await openaiService.generateResponse(
+          transcript,
+          conversationId,
+          responseStyle,
+          usersApikey,
+          aiProvider || 'openai',
+          userContext,
+          responseLanguage
         );
 
         setResponse(result.response);
-        //setMetadata(result.metadata);
+        setMetadata({
+            provider: result.provider,
+            tokensUsed: result.tokensUsed,
+            timestamp: result.timestamp,
+            style: result.style
+        });
 
-        // logger.info("AI response generated successfully", {
-        //   provider: result.metadata.provider,
-        //   tokensUsed: result.metadata.tokensUsed,
-        //   style: result.metadata.style,
-        // });
         logger.info("AI response generated successfully", {
           provider: result.provider,
           tokensUsed: result.tokensUsed,
@@ -65,7 +77,6 @@ export const useAIResponse = () => {
         });
       } catch (err: any) {
         const errorMessage =
-          err.response?.data?.message ||
           err.message ||
           "Failed to generate AI response";
         setError(errorMessage);
@@ -94,20 +105,27 @@ export const useAIResponse = () => {
         setIsGenerating(true);
         setError(null);
 
-        const result: AIResponse = await apiClient.post(
-          "/api/response/generate",
-          lastRequestRef.current
+        const request = lastRequestRef.current;
+        if (!request.usersApikey) {
+             throw new Error("API Key missing for retry");
+        }
+
+        const result: AIResponse = await openaiService.generateResponse(
+          request.transcript,
+          request.conversationId,
+          request.responseStyle,
+          request.usersApikey,
+          request.aiProvider || 'openai'
         );
 
         setResponse(result.response);
-        //setMetadata(result.metadata);
+        setMetadata({
+            provider: result.provider,
+            tokensUsed: result.tokensUsed,
+            timestamp: result.timestamp,
+            style: result.style
+        });
 
-        // logger.info("AI response generated successfully on retry", {
-        //   provider: result.metadata.provider,
-        //   tokensUsed: result.metadata.tokensUsed,
-        //   style: result.metadata.style,
-        //   attempt: retries + 1,
-        // });
         logger.info("AI response generated successfully on retry", {
           provider: result.provider,
           tokensUsed: result.tokensUsed,
@@ -118,7 +136,6 @@ export const useAIResponse = () => {
         return;
       } catch (err: any) {
         const errorMessage =
-          err.response?.data?.message ||
           err.message ||
           "Failed to generate AI response";
 

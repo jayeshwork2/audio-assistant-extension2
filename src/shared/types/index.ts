@@ -3,8 +3,6 @@ export * from './providers';
 export * from './settings';
 export * from './transcription';
 export * from './ai-response';
-export * from './translation';
-export * from './meeting';
 export * from './export';
 
 export interface User {

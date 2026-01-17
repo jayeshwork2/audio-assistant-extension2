@@ -4,6 +4,8 @@ import { STTProviderType, AIProviderType } from "./providers";
 export interface UserSettings {
   audioMode: AudioMode;
   language: string;
+  responseLanguage: string;
+  userContext: string;
   sttProvider: STTProviderType;
   aiProvider: AIProviderType;
   apiKeys: Record<string, string>;
@@ -11,10 +13,12 @@ export interface UserSettings {
 }
 
 export const DEFAULT_SETTINGS: UserSettings = {
-  audioMode: "mic-only",
+  audioMode: "tab-only",
   language: "en-US",
-  sttProvider: STTProviderType.BROWSER,
-  aiProvider: AIProviderType.GPT4,
+  responseLanguage: "en-US",
+  userContext: "",
+  sttProvider: STTProviderType.GROQ,
+  aiProvider: AIProviderType.GROQ,
   apiKeys: {},
   autoSave: true,
 };
